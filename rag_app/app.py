@@ -415,7 +415,7 @@ st.markdown("""
 <div class="main-header">
     <h1>🤖 RAG Document Assistant</h1>
     <p>Upload documents, ask questions, and get intelligent answers powered by AI</p>
-    <p>Now powered by Qdrant Cloud for reliable vector storage!</p>
+    <p>The previous chat memory is stored in right section if you upload more than 2 documents</p>
 </div>
 """, unsafe_allow_html=True)
 
