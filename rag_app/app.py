@@ -9,6 +9,7 @@ from openai import OpenAI
 import tempfile
 import os
 from datetime import datetime
+from qdrant_client import QdrantClient
 
 load_dotenv()
 
@@ -228,6 +229,25 @@ st.markdown("""
         border-radius: 8px;
         padding: 5px 10px;
     }
+    
+    .connection-status {
+        padding: 0.5rem;
+        border-radius: 6px;
+        margin: 0.5rem 0;
+        font-size: 0.85rem;
+    }
+    
+    .connection-success {
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+    
+    .connection-error {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -242,6 +262,36 @@ if 'current_file' not in st.session_state:
     st.session_state.current_file = None
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []  # Store previous chat sessions
+if 'qdrant_client' not in st.session_state:
+    st.session_state.qdrant_client = None
+
+# Qdrant configuration function
+@st.cache_resource
+def get_qdrant_client():
+    """Initialize and return Qdrant client"""
+    try:
+        # Get credentials from environment variables or Streamlit secrets
+        qdrant_url = os.getenv("QDRANT_URL") or st.secrets.get("QDRANT_URL")
+        qdrant_api_key = os.getenv("QDRANT_API_KEY") or st.secrets.get("QDRANT_API_KEY")
+        
+        if not qdrant_url or not qdrant_api_key:
+            st.error("❌ Qdrant URL or API Key not found. Please set QDRANT_URL and QDRANT_API_KEY environment variables or add them to Streamlit secrets.")
+            return None
+        
+        # Create Qdrant client
+        client = QdrantClient(
+            url=qdrant_url,
+            api_key=qdrant_api_key,
+        )
+        
+        # Test connection
+        collections = client.get_collections()
+        st.success(f"✅ Connected to Qdrant Cloud! Found {len(collections.collections)} collections.")
+        return client
+        
+    except Exception as e:
+        st.error(f"❌ Failed to connect to Qdrant: {str(e)}")
+        return None
 
 # Helper functions
 def save_current_chat():
@@ -270,6 +320,13 @@ def extract_text_from_pdf(temp_path):
 def process_document(uploaded_file):
     """Process uploaded document and create vector store"""
     try:
+        # Get Qdrant client
+        if not st.session_state.qdrant_client:
+            st.session_state.qdrant_client = get_qdrant_client()
+        
+        if not st.session_state.qdrant_client:
+            return None, None, None
+            
         # Save uploaded file temporarily
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
             temp_file.write(uploaded_file.read())
@@ -288,12 +345,21 @@ def process_document(uploaded_file):
         # Create embeddings
         embedding_model = OpenAIEmbeddings(model="text-embedding-3-large")
         
-        # Create vector store
+        # Get Qdrant credentials
+        qdrant_url = os.getenv("QDRANT_URL") or st.secrets.get("QDRANT_URL")
+        qdrant_api_key = os.getenv("QDRANT_API_KEY") or st.secrets.get("QDRANT_API_KEY")
+        
+        # Create unique collection name based on filename and timestamp
+        collection_name = f"doc_{uploaded_file.name.replace('.pdf', '').replace(' ', '_').lower()}_{int(datetime.now().timestamp())}"
+        
+        # Create vector store with hosted Qdrant
         vector_store = QdrantVectorStore.from_documents(
             documents=split_docs,
             embedding=embedding_model,
-            url="http://localhost:6333",
-            collection_name="rag_app"
+            url=qdrant_url,
+            api_key=qdrant_api_key,
+            collection_name=collection_name,
+            force_recreate=True  # This ensures a fresh collection for each document
         )
         
         # Clean up temp file
@@ -321,8 +387,8 @@ def get_ai_response(query, vector_store):
         system_prompt = f"""
         You are a helpful AI Assistant who answers user queries based on the available context
         retrieved from uploaded documents. Provide accurate, helpful responses and reference
-        specific page numbers when possible.ALways return the page number of the document.
-        You are a like a teacher to them who teaches them and give refeernce according to the pdf
+        specific page numbers when possible. Always return the page number of the document.
+        You are like a teacher to them who teaches them and give reference according to the pdf
 
         Context:
         {context}
@@ -349,9 +415,14 @@ st.markdown("""
 <div class="main-header">
     <h1>🤖 RAG Document Assistant</h1>
     <p>Upload documents, ask questions, and get intelligent answers powered by AI</p>
-    <p>When Upload 2 documents you can see the chat with previous file in Recent Chat section</p>
+    <p>Now powered by Qdrant Cloud for reliable vector storage!</p>
 </div>
 """, unsafe_allow_html=True)
+
+# Initialize Qdrant connection check
+if not st.session_state.qdrant_client:
+    with st.spinner("🔌 Connecting to Qdrant Cloud..."):
+        st.session_state.qdrant_client = get_qdrant_client()
 
 # Sidebar
 with st.sidebar:
@@ -362,6 +433,15 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
     
+    # Connection status
+    st.markdown('---')
+    st.markdown('<div class="sidebar-header">🔌 Connection Status</div>', unsafe_allow_html=True)
+    if st.session_state.qdrant_client:
+        st.markdown('<div class="connection-status connection-success">✅ Qdrant Cloud Connected</div>', unsafe_allow_html=True)
+    else:
+        st.markdown('<div class="connection-status connection-error">❌ Qdrant Connection Failed</div>', unsafe_allow_html=True)
+        st.markdown('<p style="font-size: 0.8rem; color: #6c757d;">Check your credentials and try refreshing</p>', unsafe_allow_html=True)
+    
     # File upload section
     st.markdown('---')
     st.markdown('<div class="sidebar-header">📤 Upload Document</div>', unsafe_allow_html=True)
@@ -369,10 +449,15 @@ with st.sidebar:
         "Choose a PDF file",
         type=["pdf"],
         help="Upload a PDF document to start asking questions",
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        disabled=not st.session_state.qdrant_client  # Disable if no connection
     )
     if not uploaded_file:
         st.markdown('<p style="color: #6c757d; font-size: 0.85rem; margin: 0.5rem 0 0 0;">Drag and drop or click to upload</p>', unsafe_allow_html=True)
+    
+    if not st.session_state.qdrant_client:
+        st.warning("⚠️ Upload disabled - Qdrant connection required")
+    
     st.markdown('</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
     
@@ -382,7 +467,7 @@ with st.sidebar:
     if st.session_state.document_processed and st.session_state.current_file:
         st.markdown(f'<span class="status-badge status-success">✅ Ready</span>',unsafe_allow_html=True)
         st.markdown(f'<p style="font-size: 0.85rem; color: #495057; margin: 0.5rem 0 0 0;"><strong>File:</strong> {st.session_state.current_file}</p>', unsafe_allow_html=True)
-        st.markdown(f'<p style="font-size: 0.8rem; color: #6c757d; margin: 0.25rem 0 0 0;">✓ Processed and indexed</p>', unsafe_allow_html=True)
+        st.markdown(f'<p style="font-size: 0.8rem; color: #6c757d; margin: 0.25rem 0 0 0;">✓ Processed and indexed in Qdrant Cloud</p>', unsafe_allow_html=True)
     else:
         st.markdown('<span class="status-badge status-processing">⏳ Waiting</span>',unsafe_allow_html=True)
         st.markdown('<p style="font-size: 0.85rem; color: #6c757d; margin: 0.5rem 0 0 0;">Upload a document to get started</p>', unsafe_allow_html=True)
@@ -426,7 +511,7 @@ col1, col2 = st.columns([2, 1])
 
 with col1:
     # Document processing
-    if uploaded_file is not None:
+    if uploaded_file is not None and st.session_state.qdrant_client:
         if uploaded_file.name != st.session_state.current_file:
             # Save current chat before switching to new document
             save_current_chat()
@@ -436,29 +521,32 @@ with col1:
             st.session_state.document_processed = False
             st.session_state.messages = []  # Clear current chat
             
-            with st.spinner("🔄 Processing document... This may take a moment."):
+            with st.spinner("🔄 Processing document and uploading to Qdrant Cloud... This may take a moment."):
                 progress_bar = st.progress(0)
                 progress_bar.progress(25, "Extracting text...")
                 
                 vector_store, extracted_text, split_docs = process_document(uploaded_file)
-                progress_bar.progress(75, "Creating embeddings...")
+                progress_bar.progress(75, "Creating embeddings and uploading to Qdrant...")
                 
                 if vector_store:
                     st.session_state.vector_store = vector_store
                     st.session_state.document_processed = True
                     progress_bar.progress(100, "Complete!")
-                    st.success("✅ Document processed successfully!")
+                    st.success("✅ Document processed and uploaded to Qdrant Cloud successfully!")
                     
                     # Show document preview
                     with st.expander("📄 Document Preview", expanded=False):
                         preview_text = extracted_text[0].page_content[:1000] if extracted_text else "No content available"
                         st.text_area("Document Content (First 1000 characters)", 
                                    preview_text, height=200, disabled=True)
-                        st.info(f"Document split into {len(split_docs)} chunks for processing")
+                        st.info(f"Document split into {len(split_docs)} chunks and stored in Qdrant Cloud")
                 else:
-                    st.error("❌ Failed to process document. Please try again.")
+                    st.error("❌ Failed to process document. Please check your Qdrant connection and try again.")
                 
                 progress_bar.empty()
+    
+    elif uploaded_file is not None and not st.session_state.qdrant_client:
+        st.error("❌ Cannot process document - Qdrant connection required. Please check your credentials.")
     
     # Chat interface
     st.markdown("### 💬 Chat with your Document")
@@ -507,7 +595,10 @@ with col1:
             st.rerun()
     
     else:
-        st.info("👆 Please upload a PDF document to start chatting!")
+        if not st.session_state.qdrant_client:
+            st.error("🚫 Qdrant connection required to use the chat feature. Please check your credentials.")
+        else:
+            st.info("👆 Please upload a PDF document to start chatting!")
 
 with col2:
     # Statistics and info panel
@@ -565,13 +656,14 @@ with col2:
     - Reference page numbers will be provided
     - Try asking about summaries, key points, or specific topics
     - Use clear, concise language
+    - Documents are now stored securely in Qdrant Cloud
     """)
 
 # Footer
 st.markdown("---")
 st.markdown(
     "<div style='text-align: center; color: #666; padding: 1rem;'>"
-    "Built with ❤️ using Streamlit, LangChain, and OpenAI"
+    "Built with ❤️ using Streamlit, LangChain, OpenAI, and Qdrant Cloud"
     "</div>", 
     unsafe_allow_html=True
 )
