@@ -29,7 +29,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-#🧠 How It Works
+# 🧠 How It Works
 PDF Upload: Upload a PDF document via the Streamlit UI.
 
 Text Extraction: The app extracts and splits the text into manageable chunks.
@@ -42,14 +42,14 @@ User Query: When you ask a question, the app retrieves the most relevant chunks 
 
 LLM Response: The selected chunks and your question are passed to the language model for answering.
 
-#🖥️ Usage
+# 🖥️ Usage
 Run the Streamlit app locally:
 
 ```bash
 streamlit run app.py
 ```
 
-🛠️ Configuration
+# 🛠️ Configuration
 Create a .env file in the project root with the following:
 ```bash
 OPENAI_API_KEY=your_api_key_here
