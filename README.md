@@ -1,41 +1,35 @@
-📄 RAG PDF Reader App
+# 📄 RAG PDF Reader App
+
 A simple Streamlit app that allows you to upload a PDF file and interact with it using Retrieval-Augmented Generation (RAG). Ask questions about the content of your PDF and get accurate, context-aware answers powered by language models and vector similarity search.
 
-🚀 Features
-📁 Upload and parse PDF documents
+---
 
-🔍 Chunking and embedding of PDF text
+## 🚀 Features
 
-🤖 Ask questions based on the PDF content using RAG
+- 📁 Upload and parse PDF documents
+- 🔍 Chunking and embedding of PDF text
+- 🤖 Ask questions based on the PDF content using RAG
+- 🧠 Vector database support (e.g., FAISS)
+- ⚡ Powered by modern LLMs (e.g., OpenAI, Cohere, Hugging Face, etc.)
+- 🎨 Clean and interactive UI built with Streamlit
 
-🧠 Vector database support (e.g., FAISS)
+---
 
-⚡ Powered by modern LLMs (e.g., OpenAI, Cohere, Hugging Face, etc.)
+## 📦 Installation
 
-🎨 Clean and interactive UI built with Streamlit
-
-📦 Installation
 Clone the repository:
 
-bash
-Copy
-Edit
+```bash
 git clone https://github.com/yourusername/rag-pdf-reader.git
 cd rag-pdf-reader
-Create and activate a virtual environment:
-
-bash
-Copy
-Edit
+```
+```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
-Install the dependencies:
-
-bash
-Copy
-Edit
 pip install -r requirements.txt
-🧠 How It Works
+```
+
+#🧠 How It Works
 PDF Upload: Upload a PDF document via the Streamlit UI.
 
 Text Extraction: The app extracts and splits the text into manageable chunks.
@@ -48,21 +42,19 @@ User Query: When you ask a question, the app retrieves the most relevant chunks 
 
 LLM Response: The selected chunks and your question are passed to the language model for answering.
 
-🖥️ Usage
+#🖥️ Usage
 Run the Streamlit app locally:
 
-bash
-Copy
-Edit
+```bash
 streamlit run app.py
-Then open the provided URL in your browser (usually http://localhost:8501).
+```
 
 🛠️ Configuration
 Create a .env file in the project root with the following:
-
-ini
-Copy
-Edit
+```bash
 OPENAI_API_KEY=your_api_key_here
 EMBEDDING_MODEL=openai/text-embedding-ada-002
 LLM_MODEL=gpt-3.5-turbo
+```
+
+
